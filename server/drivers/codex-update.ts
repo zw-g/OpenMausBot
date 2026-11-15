@@ -2,6 +2,7 @@
 import { existsSync } from "node:fs";
 import { cloudHomeConfigured } from "../cloud-home.ts";
 import type { ProviderSnapshot } from "../contracts.ts";
+import { pinnedNpmVersion } from "../engine-versions.ts";
 import { splitCliString } from "../env-path.ts";
 import { codexVersionBehind, readLatestCodexRelease } from "./codex-release.ts";
 
@@ -21,11 +22,13 @@ export function codexUpdateCommand(cli: string, platform: NodeJS.Platform = proc
 
 export async function codexReleaseUpdate(version: string, cli: string, onCloud = cloudHomeConfigured()): Promise<ProviderSnapshot["update"] | undefined> {
   const latest = await readLatestCodexRelease();
-  if (!latest || !codexVersionBehind(version, latest)) return undefined;
+  const pinned = pinnedNpmVersion("codex");
+  const target = latest && pinned && codexVersionBehind(pinned, latest) ? pinned : latest;
+  if (!target || !codexVersionBehind(version, target)) return undefined;
   // My Cloud's Codex comes with the image, in a folder nobody can write to, and updates with the Cloud: nothing to offer there.
   if (onCloud) return undefined;
   return {
-    title: `Update Codex to ${latest}`,
+    title: `Update Codex to ${target}`,
     message: `A newer stable Codex CLI is available (installed: ${version}). Update it, then refresh models. Model availability also depends on your signed-in account.`,
     command: codexUpdateCommand(cli),
   };

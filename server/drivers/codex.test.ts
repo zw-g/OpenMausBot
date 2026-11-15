@@ -19,6 +19,7 @@ import { caseTokens, LIVE_REPLY_CASES, liveReplyScripts } from "../testing/live-
 import { CodexDriver, codexNativeIncomingLogMessage, codexUpdateCommand } from "./codex.ts";
 import { codexCliOverrides } from "./codex-process.ts";
 import { codexReleaseUpdate } from "./codex-update.ts";
+import { pinnedNpmVersion } from "../engine-versions.ts";
 import { parseToml } from "../toml-lite.ts";
 import * as codexProcess from "./codex-process.ts";
 import { CODEX_SIGN_IN_EXPIRED, codexLimitFacts, codexNotSignedIn, codexSignInRefused, codexUserError } from "./codex-errors.ts";
@@ -34,9 +35,10 @@ import { boxEnvironment } from "../bot-box/env.ts";
 import { autoVerdict } from "../auto-approve.ts";
 import { formatQuestionAnswers } from "../../shared/ask-question.ts";
 
+const release = vi.hoisted(() => ({ latest: "0.156.1" }));
 vi.mock("./codex-release.ts", async (importOriginal) => ({
   ...await importOriginal<typeof import("./codex-release.ts")>(),
-  readLatestCodexRelease: async () => "0.156.1",
+  readLatestCodexRelease: async () => release.latest,
 }));
 
 const FAKE_CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-codex-app-server.ts");
@@ -3633,6 +3635,19 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     expect(await codexReleaseUpdate("0.150.0", "codex", false)).toMatchObject({ title: "Update Codex to 0.156.1", command: "codex update" });
     expect(await codexReleaseUpdate("0.150.0", "codex", true)).toBeUndefined();
     expect(await codexReleaseUpdate("0.156.1", "codex", true)).toBeUndefined();
+  });
+
+  it("offers an update only up to the Codex version the app installs", async () => {
+    const pinned = pinnedNpmVersion("codex")!;
+    process.env.FAKE_CODEX_VERSION = `codex-cli ${pinned}`;
+    release.latest = "999.0.0";
+    try {
+      await create();
+      expect((await instance.snapshot()).update).toBeUndefined();
+      expect(await codexReleaseUpdate("0.146.0", "codex", false)).toMatchObject({ title: `Update Codex to ${pinned}` });
+    } finally {
+      release.latest = "0.156.1";
+    }
   });
 
   it("marks a Codex 401 as setup so the UI offers sign-in instead of Retry", async () => {
